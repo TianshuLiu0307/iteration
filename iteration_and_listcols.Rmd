@@ -1,0 +1,212 @@
+---
+title: "iteration_and_listcols"
+author: "Tianshu Liu"
+date: "2022-11-01"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(rvest)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+```{r}
+vec_logical = c(TRUE, FALSE, TRUE, TRUE)
+```
+
+```{r}
+l = list(
+  vec_numeric = 5:8,
+  mat         = matrix(1:8, 2, 4),
+  vec_logical = c(TRUE, FALSE),
+  summary     = summary(rnorm(1000))
+)
+l
+l$vec_numeric
+l[["mat"]]
+l[3]
+l[[3]]
+l[[3]][-1]
+
+```
+
+
+```{r}
+mean_and_sd = function(x) {
+  
+  if (!is.numeric(x)) {
+    stop("Argument x should be numeric")
+  } else if (length(x) == 1) {
+    stop("Cannot be computed for length 1 vectors")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+
+  tibble(
+    mean = mean_x, 
+    sd = sd_x
+  )
+}
+```
+
+
+```{r}
+list_norm = list(
+  a = rnorm(20,5,4),
+  b = rnorm(20,-12,3),
+  c = rnorm(20,3,4),
+  d = rnorm(20,8,1)
+)
+mean_and_sd(list_norm[[1]])
+mean_and_sd(list_norm[[2]])
+mean_and_sd(list_norm[[3]])
+mean_and_sd(list_norm[[4]])
+
+# for loop
+output = vector("list", length = 4)
+for (i in 1:4){
+  output[[i]] = mean_and_sd(list_norm[[i]])
+}
+
+output
+
+# map
+map(list_norm, mean_and_sd)
+map(list_norm, summary)
+map_dbl(list_norm, median)
+map_df(list_norm, mean_and_sd)
+```
+
+```{r}
+listcol_df = 
+  tibble(
+    name = c("a", "b", "c", "d"),
+    norm = list_norm
+  )
+
+listcol_df[["norm"]]
+
+map_df(listcol_df[["norm"]], mean_and_sd)
+
+listcol_df %>% 
+  mutate(
+    m_sd = map(norm, mean_and_sd)
+  ) %>% 
+  select(-norm) 
+```
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(
+      id, 
+      USW00094728 = "CentralPark_NY", 
+      USC00519397 = "Waikiki_HA",
+      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+```{r}
+weather_nest_df = 
+  weather_df %>% 
+  nest(data = date:tmin)
+
+weather_df %>% count(name, id)
+weather_nest_df
+weather_nest_df[["data"]]
+```
+
+```{r}
+weather_nest_df[["data"]][[1]]
+
+# linear regression model
+lm(tmax~tmin, data = weather_nest_df[["data"]][[1]])
+lm(tmax~tmin, data = weather_nest_df[["data"]][[2]])
+lm(tmax~tmin, data = weather_nest_df[["data"]][[3]])
+
+weather_lm = function(df){
+  
+  lm(formula = tmax~tmin, data = df)
+  
+}
+
+map(weather_nest_df[["data"]], weather_lm)
+
+weather_nest_df %>% 
+  mutate(
+    models = map(data, weather_lm)
+  )
+```
+
+```{r}
+# unnest
+weather_nest_df %>% 
+  unnest(data)
+```
+
+```{r}
+read_page_reviews <- function(url) {
+  
+  html = read_html(url)
+  
+  review_titles = 
+    html %>%
+    html_nodes(".a-text-bold span") %>%
+    html_text()
+  
+  review_stars = 
+    html %>%
+    html_nodes("#cm_cr-review_list .review-rating") %>%
+    html_text() %>%
+    str_extract("^\\d") %>%
+    as.numeric()
+  
+  review_text = 
+    html %>%
+    html_nodes(".review-text-content span") %>%
+    html_text() %>% 
+    str_replace_all("\n", "") %>% 
+    str_trim() %>% 
+    str_subset("The media could not be loaded.", negate = TRUE) %>% 
+    str_subset("^$", negate = TRUE)
+  
+  tibble(
+    title = review_titles,
+    stars = review_stars,
+    text = review_text
+  )
+}
+
+base_url = "https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber="
+
+vec_urls = str_c(base_url, 1:5)
+
+map(vec_urls, read_page_reviews)
+
+napoleon_reviews = 
+  tibble(
+    page = 1:5,
+    page_url = str_c(base_url, page)
+  ) %>% 
+  mutate(reviews = map(page_url, read_page_reviews))
+
+tibble(
+    page = 1:5,
+    page_url = str_c(base_url, page),
+    reviews = map(page_url, read_page_reviews))
+
+
+
+```
+
+
